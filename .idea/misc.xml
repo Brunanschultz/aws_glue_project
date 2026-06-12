@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="Black">
+    <option name="sdkName" value="Python 3.14 (aws_glue_project)" />
+  </component>
+  <component name="ProjectRootManager" version="2" project-jdk-name="Docker (amazon/aws-glue-libs:glue_libs_4.0.0_image_01)" project-jdk-type="Python SDK" />
+</project>
