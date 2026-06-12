@@ -1,0 +1,8 @@
+Este repositório é uma laboratório para criação da pipeline a seguir via terraform:
+
+Upload para S3
+Glue Job
+Escrita no S3 dispara evento
+Envio de e-mail com notificação
+
+
