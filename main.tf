@@ -137,11 +137,11 @@ resource "aws_iam_role_policy_attachment" "glue_service_role" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
 }
 
-/*resource "aws_s3_object" "python_shell_script" {
+resource "aws_s3_object" "python_shell_script" {
   bucket = var.bucket_name
   key    = "glue_jobs/glue_job.py"
   source = "glue/glue_job.py" 
-}*/
+}
 
 resource "aws_glue_job" "python_shell_job" {
   name         = "example-python-shell-job"
