@@ -1,8 +1,82 @@
-Este repositório é uma laboratório para criação da pipeline a seguir via terraform:
+# AWS Data Pipeline com Terraform (S3, EventBridge, Glue, Lambda)
 
-Upload para S3
-Glue Job
-Escrita no S3 dispara evento
-Envio de e-mail com notificação
+## Visão Geral
 
+Este repositório contém código Terraform para provisionar um pipeline básico de processamento de dados orientado a eventos na AWS. Quando um arquivo é enviado para um bucket S3, ele dispara notificações e prepara um trabalho de transformação de dados usando o AWS Glue.
 
+## Arquitetura
+
+O fluxo de trabalho da infraestrutura é o seguinte:
+
+1.  **Ingestão**: Um usuário faz o upload de um arquivo para um prefixo específico (`/extract`) em um bucket S3.
+2.  **Notificação**: A criação do objeto S3 é capturada pelo AWS EventBridge.
+    *   O EventBridge envia uma notificação para um tópico SNS, que por sua vez envia um e-mail para o usuário inscrito.
+    *   O EventBridge também registra o payload completo do evento em um CloudWatch Log Group para auditoria e depuração.
+3.  **Processamento**: Um job AWS Glue Python Shell é definido para ler os dados brutos do prefixo `/extract`, processá-los usando a biblioteca `pandas` e escrever os dados transformados no prefixo `/load` no mesmo bucket.
+4.  **Orquestração (Parcial)**: Uma função AWS Lambda também está configurada para ser acionada diretamente pelo evento S3. Esta função pode ser estendida para atuar como um orquestrador, por exemplo, para iniciar o job do Glue.
+
+## Componentes Criados pelo Terraform
+
+*   **S3 Bucket**: Um bucket central para armazenar dados brutos (`extract/`) e processados (`load/`).
+*   **EventBridge Rule**: Uma regra que filtra eventos `s3:ObjectCreated` no bucket.
+*   **SNS Topic**: Um tópico chamado `s3-glue-s3-notif` para enviar notificações por e-mail.
+*   **CloudWatch Log Group**: Um grupo de logs (`/aws/events/s3-create-logs`) para armazenar detalhes dos eventos do EventBridge.
+*   **AWS Glue Job**: Um job Python Shell chamado `example-python-shell-job` configurado com a IAM Role necessária e a localização do script. O script realiza uma operação de `groupby` em um arquivo CSV.
+*   **AWS Lambda Function**: Uma função chamada `activate-s3` acionada por notificações S3 no prefixo `extract/`.
+*   **IAM Roles**: Roles específicas com permissões bem definidas para que Glue, Lambda e EventBridge possam interagir de forma segura com outros serviços da AWS.
+
+## Como Usar
+
+### 1. Pré-requisitos
+
+*   Terraform instalado.
+*   AWS CLI instalado e configurado com credenciais.
+
+### 2. Configuração
+
+*   Crie um arquivo chamado `terraform.tfvars` na raiz do projeto.
+*   Adicione o seguinte conteúdo, substituindo os valores pelos seus:
+
+    ```terraform
+    aws_profile        = "seu-perfil-aws"
+    notification_email = "seu-email@exemplo.com"
+    bucket_name        = "um-nome-de-bucket-globalmente-unico"
+    ```
+*   **Importante**: Após executar o `terraform apply`, você deve confirmar a inscrição no tópico SNS clicando no link do e-mail de confirmação que será enviado para o `notification_email`.
+
+### 3. Deploy da Infraestrutura
+
+*   Execute `terraform init` para inicializar o diretório.
+*   Execute `terraform plan` para revisar as alterações.
+*   Execute `terraform apply` para criar os recursos.
+
+### 4. Upload do Script do Glue
+
+A configuração do Terraform espera que o script do Glue esteja presente no S3. Você precisa fazer o upload manualmente:
+
+```bash
+aws s3 cp glue/glue_job.py s3://<seu-nome-de-bucket>/glue_jobs/glue_job.py --profile <seu-perfil-aws>
+```
+> **Nota**: Este passo pode ser automatizado no Terraform descomentando o recurso `aws_s3_object` no arquivo `main.tf`.
+
+### 5. Acionando o Pipeline
+
+*   Faça o upload de um arquivo CSV (por exemplo, `wc_top_scorers.csv` do script) para a pasta `extract/` no seu bucket S3.
+*   Isso acionará a regra do EventBridge, e você deverá receber uma notificação por e-mail.
+
+### 6. Executando o Job do Glue
+
+*   Navegue até o console do AWS Glue.
+*   Encontre o job chamado `example-python-shell-job` e execute-o manualmente.
+*   Após a conclusão, você encontrará o arquivo processado `wc_top_scorers_grouped.csv` na pasta `load/` do seu bucket S3.
+
+### 7. Limpeza
+
+*   Para remover todos os recursos criados, execute `terraform destroy`.
+
+## Estrutura de Arquivos
+
+*   `main.tf`: O arquivo principal do Terraform contendo todas as definições da infraestrutura.
+*   `glue/glue_job.py`: O script Python para o job do AWS Glue.
+*   `lambda/lambda_function.py`: O script Python para a função AWS Lambda.
+*   `terraform.tfvars`: Arquivo para variáveis do usuário (perfil, e-mail, nome do bucket). **Este arquivo deve estar no `.gitignore`**.

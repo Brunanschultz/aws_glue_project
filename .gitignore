@@ -4,3 +4,4 @@ terraform*
 /.terraform/
 
 /.idea/
+terraform.tfvars
