@@ -20,6 +20,7 @@ variable "bucket_name" {
   default = "learning-aws-etl-bruna-novais-2026"
 }
 
+
 resource "aws_s3_bucket" "learning-aws-etl" {
   bucket = var.bucket_name
 
@@ -32,17 +33,12 @@ resource "aws_s3_bucket" "learning-aws-etl" {
 
 resource "aws_s3_object" "extract" {
     bucket = var.bucket_name
-    key    = "extract/"
-    source = "${path.module}/main.py"
+    key    = "extract/wc_top_scorers.csv"
+    source = "${path.module}/data/wc_top_scorers.csv"
 }
 
-resource "aws_s3_object" "load" {
-    bucket = var.bucket_name
-    key    = "load/main.py"
-    source = "${path.module}/main.py"
-}
 
-# Compacta o código da Lambda
+########### LAMBDA ###########
 data "archive_file" "lambda_zip" {
   type        = "zip"
   source_file = "${path.module}/lambda/lambda_function.py"
@@ -73,7 +69,8 @@ resource "aws_iam_role_policy_attachment" "lambda_logs" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# Lambda
+
+
 resource "aws_lambda_function" "activate-s3" {
   function_name = "activate-s3"
 
@@ -113,4 +110,69 @@ resource "aws_s3_bucket_notification" "bucket_notification" {
   depends_on = [
     aws_lambda_permission.allow_s3
   ]
+}
+########### GLUE ###########
+# Role do Glue
+resource "aws_iam_role" "glue_job_role" {
+  name = "glue_job_role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "glue.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "s3_full_access_attach" {
+  role       = aws_iam_role.glue_job_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+}
+
+resource "aws_iam_role_policy_attachment" "glue_service_role" {
+  role       = aws_iam_role.glue_job_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
+}
+
+resource "aws_glue_job" "python_shell_job" {
+  name         = "example-python-shell-job"
+  description  = "An example Python shell job"
+  role_arn     = aws_iam_role.glue_job_role.arn
+  max_capacity = "0.0625"
+  max_retries  = 0
+  timeout      = 2880
+  #connections  = [aws_glue_connection.example.name]
+
+  command {
+    script_location = "s3://${var.bucket_name}/glue_jobs/glue_job.py"
+    name            = "pythonshell"
+    python_version  = "3.9"
+  }
+
+  default_arguments = {
+    "--job-language"                     = "python" # Default is python
+    "--continuous-log-logGroup"          = "/aws-glue/jobs"
+    "--enable-continuous-cloudwatch-log" = "true"
+    "library-set"                        = "analytics" # loads common analytics libraries
+  }
+
+  execution_property {
+    max_concurrent_runs = 1
+  }
+
+  tags = {
+    "ManagedBy" = "AWS"
+  }
+}
+
+resource "aws_s3_object" "python_shell_script" {
+  bucket = var.bucket_name
+  key    = "glue_jobs/glue_job.py"
+  source = "glue/glue_job.py" # Make sure this file exists locally
 }
